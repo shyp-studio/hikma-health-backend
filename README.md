@@ -6,6 +6,13 @@ The Hikma Health platform is a mobile electronic health record system designed f
 This repository contains the server-side code for Hikma Health's mobile application. The corresponding client-side code is located at https://github.com/hikmahealth/hikma-app. Please feel free to file 
 feature requests and bugs at either location.
 
+**This fork contains fixed issues in Hikma Health Backend:**
+============================================================
+The fixed issues are:
+- Fixed Kuberneted files for Deployment.
+- Export patients CSV file functionality.
+- Create Demo Clinic endpoint.
+- Create main initial user in Database. (You can update the user email and password).
 
 Local Backend Setup + GCP configuration
 =======================================
@@ -49,7 +56,7 @@ Createdb hikma_dev -O hikma_dev
 In ./app/config.py
 Set PG_USER to user you just created
 Set PG_DB to db you just created
-Set EXPORTS_STORAGE_BUCKET to hikma-api-exports (to be created)
+Set EXPORTS_STORAGE_BUCKET to hikma-api-exports (to be created) (This is not needed any more.)
 
 **Create Key Ring/ Service Account, and Key:**
 ----------------------------------------------
@@ -65,7 +72,6 @@ Encode the key so you have something to commit and use to build:
 ```
 gcloud kms encrypt --location=global --keyring=[keyring_name] --key=[key_name] --plaintext-file=[key_filename].json --ciphertext-file=[key_filename].json.enc
 ```
-
 
 In backend repository /app folder
 
@@ -83,6 +89,8 @@ export GOOGLE_APPLICATION_CREDENTIALS=[key_filename].json
 
 At this point, you should be able to `./run.sh` in your venv to run locally
 
+**This section is note needed any more, Skip everything related to Bucket**
+**Bucket was used to save daily patients data CSV file. In this version the functionality is fixed to directly generate CSV file instead of downloading the saved one from the Bucket.**
 Create EXPORTS_STORAGE_BUCKET as “hikma-api-exports”
 Same region as cluster, uniform access, 
 Under permissions give the service account you created access to the buckets as a “Storage Object Admin” Role
@@ -102,6 +110,13 @@ python scripts/add_demo_clinic.py
 ```
 python scripts/add_new_user.py  local_user user@endlessmedicaladvantage.com password123
 ```
+Instead of running scripts live, you can call the GET Request: domain/admin_api/add_clinic to create a new demo clinic in Database.
+You can also update the email and password in file: "657ba64ed784_create_initial_user" to create intial user while running migrations live.
+You can use domain/admin_api/list_clinics to check the clinics in DB.
+**Current user credentials:**
+email: sarah@shyp.studio
+password: password123
+
 
 **Setting up deployment**
 =========================
@@ -112,6 +127,7 @@ GCP left nav> SQL > Select hikma-db > Add User > Built in authentication >
 Create an app user with username hikma_prod and password a randomly generated UUID that you store somewhere safe along with the password for the default user.
 
 Select Databases on the left nav and Create an app Database
+- While creating SQL instance, add private connection to default network.
 Call it hikma_prod as well
 
 You should have this information for the hikma-db instance
@@ -154,13 +170,20 @@ Add the following variables:
 `_DB_PASSWORD`= password for the hikma_prod App User (Not the postgres user)
 `_EXPORTS_STORAGE_BUCKET`= exports storage bucket you created earlier
 
+- In IAM section in GCP: After creating Service account and Key ring and before building the first image, add the permission (Cloud KMS CryptoKey Decrypter) to the cloud build service account in IAM section in GCP. 
+
+- In config.py: add PG_HOST = private IP of database instance. 
+- Give service account "Owner" permission so we will not have any issues for accessing cluster while building the image. 
+
 Commit all your changes to master, which should cause your build trigger to create an image.
 
 **Create deployment, certificate, service and ingress with Kubernetes**
 ------------------------------------------------------------------------
 Templates for the yaml files needed for configuration can be found in ~/k8s/
 (You'll need all 6 files prefixed with "nv-")
- 
+
+Note: In this version, the files are fixed so you won't face issues in deployment like the main hikma-health repository.
+
 Here is some k8s documentation for how to apply these changes
 https://kubernetes.io/docs/tasks/run-application/run-stateless-application-deployment/
 Most importantly, you'll use:
@@ -180,6 +203,7 @@ In service-ingress.yaml, Make sure to point to the managed certificate, the name
  
 Go to https://domains.google.com and add a new DNS Resource Record. Use the same host name as the domain that you specified in the certificate.yaml. Add the IP address of the Ingress for the record
  
+**Skip cronjob step. it is not needed for this version because export Patients Data is implemented without it**
 In export-cronjob.yaml, specify what schedule you want to use for the patient visit data export (`"0 * * * *"` is every hour). Point to the image to use. You may want to make this dynamic so that you don’t have to update the CronJob after the deployment runs. Create the CronJob.
  
 Lastly, using the correct compute zone, cluster name, deployment name, container name, and image, add the following lines back into the cloudbuild file:
